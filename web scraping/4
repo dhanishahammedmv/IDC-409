@@ -1,0 +1,83 @@
+#IISER TVM
+
+import requests
+from bs4 import BeautifulSoup
+import sqlite3
+
+# Create an SQLite database (or connect to an existing one)
+conn = sqlite3.connect('faculty_data.db')
+cursor = conn.cursor()
+
+# Drop the existing faculty table if it exists
+cursor.execute('DROP TABLE IF EXISTS faculty')
+
+# Create a new table to store faculty data
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS faculty (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        designation TEXT,
+        research_interest TEXT
+    )
+''')
+
+# Commit the table creation
+conn.commit()
+
+url = "https://www.iisertvm.ac.in/faculty"
+response = requests.get(url)
+print("response status code : ", response.status_code, '\n')
+soup_data = BeautifulSoup(response.text, 'html.parser')
+
+faculty_items = soup_data.find_all(class_="faculty_inner_wrapper")
+print('\n Faculty Details \n')
+for item in faculty_items:
+    name = item.find('div', class_='faculty_name').find('a').text.strip()
+    designation = item.find('div', class_='faculty_designation').text.strip()
+    research_interest = item.find('div', class_='faculty_research_area').find('p').text.strip()
+    print("prof name:", name)
+    print("Desigination:", designation)
+    print("Resarch Interests:", research_interest)
+    print('\n')
+
+    # Check if the faculty name already exists in the table
+    cursor.execute('SELECT id FROM faculty WHERE name = ?', (name,))
+    existing_record = cursor.fetchone()
+
+    if existing_record:
+        cursor.execute('UPDATE faculty SET designation = ?, research_interest = ? WHERE id = ?', (designation, research_interest, existing_record[0]))
+    else:
+        cursor.execute('INSERT INTO faculty (name, designation, research_interest) VALUES (?, ?, ?)', (name, designation, research_interest))
+
+    conn.commit()
+
+# Retrieve the data from the SQLite table and print it as an SQLite table
+cursor.execute('SELECT * FROM faculty')
+faculty_data = cursor.fetchall()
+
+# Display the data as an SQLite table
+print('\n sqlite3 format \n')
+for row in faculty_data:
+    print(row)
+# Retrieve the data from the SQLite table
+cursor.execute("SELECT designation, COUNT(*) FROM faculty GROUP BY designation")
+designation_data = cursor.fetchall()
+
+# Extract data for plotting designation vs. number of professors
+designations = [row[0] for row in designation_data]
+professor_counts = [row[1] for row in designation_data]
+
+# Plotting the bar chart for designation vs. number of professors
+plt.figure(figsize=(10, 6))
+plt.bar(designations, professor_counts, color='skyblue')
+plt.title('Distribution of Professors by Designation')
+plt.xlabel('Designation')
+plt.ylabel('Number of Professors')
+plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+plt.tight_layout()
+
+# Display the plot
+print('\n Making sense on data \n')
+plt.show()
+# Close the database connection
+conn.close()

@@ -1,0 +1,81 @@
+#IIT Palakkad
+
+import requests
+from bs4 import BeautifulSoup
+import sqlite3
+
+# Create a new SQLite database (or connect to an existing one)
+conn = sqlite3.connect('faculty_data_new.db')
+cursor = conn.cursor()
+
+# Create a new table to store faculty data
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS faculty (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        department TEXT
+    )
+''')
+
+# Commit the table creation
+conn.commit()
+
+url = "https://www.iitpkd.ac.in/faculty-list"
+response = requests.get(url)
+print("response status code : ", response.status_code, '\n')
+soup = BeautifulSoup(response.text, 'html.parser')
+
+faculty_names = soup.find_all(class_="views-field-field-full-name")
+print('Faculty Details \n')
+for name_element in faculty_names:
+    # Extract professor's name and department
+    name = name_element.find('a').text.strip()
+    department_element = name_element.find_next('div', class_='views-field-field-department')
+    department = department_element.text.strip() if department_element else "Department not available"
+    print("Name:", name)
+    print("Department:", department)
+    print('\n')
+
+    # Check if the faculty name already exists in the table
+    cursor.execute('SELECT id FROM faculty WHERE name = ?', (name,))
+    existing_record = cursor.fetchone()
+
+    if existing_record:
+        cursor.execute('UPDATE faculty SET department = ? WHERE id = ?', (department, existing_record[0]))
+    else:
+        cursor.execute('INSERT INTO faculty (name, department) VALUES (?, ?)', (name, department))
+
+    conn.commit()
+
+# Retrieve the data from the SQLite table and print it as an SQLite table
+cursor.execute('SELECT * FROM faculty')
+faculty_data = cursor.fetchall()
+
+print('\n sqlite3 format')
+# Display the data as an SQLite table
+for row in faculty_data:
+    print(row)
+
+# Extract data for plotting graph
+cursor.execute("SELECT department, COUNT(*) FROM faculty GROUP BY department")
+department_data = cursor.fetchall()
+
+# Extract data for plotting department vs. number of professors
+departments = [row[0] for row in department_data]
+professor_counts = [row[1] for row in department_data]
+
+# Plotting the bar chart for department vs. number of professors
+plt.figure(figsize=(10, 6))
+plt.bar(departments, professor_counts, color='skyblue')
+plt.title('Distribution of Professors by Department')
+plt.xlabel('Department')
+plt.ylabel('Number of Professors')
+plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+plt.tight_layout()
+
+# Display the plot
+print('\n Make a Sense on Data \n')
+plt.show()
+
+# Close the database connection
+conn.close()

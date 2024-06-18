@@ -1,0 +1,100 @@
+#IITH
+
+import requests
+from bs4 import BeautifulSoup
+import sqlite3
+import matplotlib.pyplot as plt
+
+# Create an SQLite database (or connect to an existing one)
+conn = sqlite3.connect('faculty_info.db')
+cursor = conn.cursor()
+
+# Create a table to store faculty data
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS faculty (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        designation TEXT,
+        qualification TEXT,
+        research_interests TEXT
+    )
+''')
+
+# Commit the table creation
+conn.commit()
+
+url = "https://www.iith.ac.in/people/faculty"
+response = requests.get(url)
+print("response status code", response.status_code, '\n')
+soup_data = BeautifulSoup(response.text, 'html.parser')
+
+faculty_cards = soup_data.find_all(class_="facultycard")
+print('Faculty Details \n')
+for card in faculty_cards:
+    # Extract professor's name, designation, and research interests
+    name_element = card.find('h5').text.strip()
+    designation_element = card.find('h6').text.strip()
+    qualification_element = card.find('h6', string=lambda text: 'Ph.D' in text)
+    research_elements = card.find_all('li', class_='text-left')
+
+    # Check if the qualification element exists before extracting its text
+    if qualification_element:
+        qualification = qualification_element.text.strip()
+    else:
+        qualification = "Not provided"
+
+    # Extract research interests and format them as a comma-separated string
+    if research_elements:
+        research_interests = ', '.join([item.text.strip() for item in research_elements])
+    else:
+        research_interests = "Not provided"
+
+    print("Name:", name_element)
+    print("Designation:", designation_element)
+    print("Educational Qualification:", qualification)
+    print("Research Interest:", research_interests)
+    print()
+
+    # Check if the professor's name already exists in the table
+    cursor.execute('SELECT id FROM faculty WHERE name = ?', (name_element,))
+    existing_record = cursor.fetchone()
+
+    # Insert the faculty data into the SQLite table
+    if existing_record:
+        cursor.execute('UPDATE faculty SET designation = ?, qualification = ?, research_interests = ? WHERE id = ?',
+                       (designation_element, qualification, research_interests, existing_record[0]))
+    else:
+        cursor.execute('INSERT INTO faculty (name, designation, qualification, research_interests) VALUES (?, ?, ?, ?)',
+                       (name_element, designation_element, qualification, research_interests))
+    conn.commit()
+# Retrieve and print the data in a tabular format
+cursor.execute("SELECT * FROM faculty")
+faculty_data = cursor.fetchall()
+
+print('\n sqlite3 format \n')
+# Display the data as an SQLite table
+for row in faculty_data:
+    print(row)
+
+# Retrieve the data from the SQLite table
+cursor.execute("SELECT designation, COUNT(*) FROM faculty GROUP BY designation")
+designation_data = cursor.fetchall()
+
+# Extract data for plotting
+designations = [row[0] for row in designation_data]
+professor_counts = [row[1] for row in designation_data]
+
+# Plotting the bar chart
+plt.figure(figsize=(10, 6))
+plt.bar(designations, professor_counts, color='skyblue')
+plt.title('Distribution of Professors by Designation')
+plt.xlabel('Designation')
+plt.ylabel('Number of Professors')
+plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+plt.tight_layout()
+
+print('\n Make a Sense on Data \n')
+# Display the plot
+plt.show()
+# Close the database connection
+conn.close()
